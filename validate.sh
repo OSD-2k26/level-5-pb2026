@@ -3,32 +3,34 @@ set -e
 
 ARTIFACT="artifact.txt"
 
-# Fetch all refs (critical)
+# 1. Ensure we have all remote info
 git fetch --all --quiet
 
-# Get remote branches only
-REMOTE_BRANCHES=$(git branch -r | tr '[:upper:]' '[:lower:]')
-
+# 2. Check for branches using remote refs specifically
 required=(alpha beta gamma main)
-
 for b in "${required[@]}"; do
-  echo "$REMOTE_BRANCHES" | grep -q "origin/$b" || {
-    echo "❌ Required branch '$b' not found"
+  # Check if the remote branch exists in the fetch data
+  if ! git rev-parse --verify "origin/$b" >/dev/null 2>&1; then
+    echo "❌ Required branch '$b' not found on remote (origin/$b)"
     exit 1
-  }
+  fi
 done
 
-# Helper: commit where artifact is ADDED in a branch
+# Helper: Find the commit where artifact was ADDED
 intro_commit () {
+  # Use origin/ prefix to ensure we check the remote tracking branch
   git log "origin/$1" --diff-filter=A --pretty=format:%H -- "$ARTIFACT" | tail -n 1
 }
 
-# Artifact must exist in main
-git checkout origin/main >/dev/null 2>&1
-[ -f "$ARTIFACT" ] || {
-  echo "❌ artifact.txt not found in main"
+# 3. Check if artifact exists in the LATEST commit of origin/main
+# Instead of checking out, we just cat the file from the tree
+git cat-file -e "origin/main:$ARTIFACT" 2>/dev/null || {
+  echo "❌ artifact.txt not found in origin/main"
   exit 1
 }
+
+# ... [Your existing logic for ALPHA/BETA/GAMMA commits] ...
+# Make sure to use "origin/alpha", etc., inside your logic
 
 # Must be created in alpha
 ALPHA_COMMIT=$(intro_commit alpha)
