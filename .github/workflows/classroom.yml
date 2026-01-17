@@ -1,4 +1,4 @@
-name: Git CTF Level 5 Validator
+name: Git CTF Level Ω Validator
 on: [push]
 
 jobs:
@@ -8,14 +8,14 @@ jobs:
       - name: Checkout full history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          ref: main  # Force the runner to start on main
+          fetch-depth: 0 # Essential: Gets all commits
+          fetch-tags: true
 
-      - name: Configure Git
+      - name: Fix branch visibility
         run: |
-          # This ensures the runner treats 'main' as a real branch it can see
-          git config --global user.email "ctf@github.com"
-          git config --global user.name "CTF Validator"
+          # This forces the runner to see all remote branches as 'origin/branch'
+          git remote set-branches origin '*'
+          git fetch origin --quiet
 
       - name: Make validator executable
         run: chmod +x validate.sh
