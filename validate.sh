@@ -3,70 +3,61 @@ set -e
 
 ARTIFACT="artifact.txt"
 
-echo "🔍 Initializing Validation..."
-
-# 1. Force fetch all branches and update remote tracking
+# 1. Sync with the remote to see all student branches
+echo "📡 Fetching remote branches..."
 git fetch origin --quiet
 
-# 2. Get the actual list of remote branches from origin
-# We remove 'origin/' prefix to match your 'required' list
-REMOTE_BRANCH_LIST=$(git branch -r | sed 's/origin\///' | tr -d ' ')
-
-required=(alpha beta gamma main)
+# 2. Define required branches
+# We use origin/ prefix because local branches don't exist in CI
+required=("origin/alpha" "origin/beta" "origin/gamma" "origin/main")
 
 for b in "${required[@]}"; do
-  if ! echo "$REMOTE_BRANCH_LIST" | grep -q -w "$b"; then
-    echo "❌ Required branch '$b' not found in remote history."
-    echo "Found branches: $REMOTE_BRANCH_LIST"
+  if ! git rev-parse --verify "$b" >/dev/null 2>&1; then
+    echo "❌ Required branch '$b' not found on GitHub."
+    echo "Double check: Did you push all branches? (git push origin --all)"
     exit 1
   fi
 done
 
-# Helper: commit where artifact is ADDED (using origin/ prefix)
+# Helper function to find the commit where the file was first added
 intro_commit () {
-  git log "origin/$1" --diff-filter=A --pretty=format:%H -- "$ARTIFACT" | tail -n 1
+  git log "$1" --diff-filter=A --pretty=format:%H -- "$ARTIFACT" | tail -n 1
 }
 
-echo "📡 Checking artifact existence across branches..."
+echo "🔍 Analyzing artifact journey..."
 
-# Check artifact in main (checking the remote ref directly)
-git ls-tree -r "origin/main" --name-only | grep -q "$ARTIFACT" || {
-  echo "❌ artifact.txt not found in origin/main"
-  exit 1
-}
+# Get the specific commits from each remote branch
+ALPHA_C=$(intro_commit origin/alpha)
+BETA_C=$(intro_commit origin/beta)
+GAMMA_C=$(intro_commit origin/gamma)
+MAIN_C=$(intro_commit origin/main)
 
-# Find commits in remote branches
-ALPHA_COMMIT=$(intro_commit alpha)
-BETA_COMMIT=$(intro_commit beta)
-GAMMA_COMMIT=$(intro_commit gamma)
-MAIN_COMMIT=$(intro_commit main)
-
-for c in "ALPHA:$ALPHA_COMMIT" "BETA:$BETA_COMMIT" "GAMMA:$GAMMA_COMMIT" "MAIN:$MAIN_COMMIT"; do
-  name=${c%%:*}
-  hash=${c#*:}
-  if [ -z "$hash" ]; then
-    echo "❌ artifact missing or never added in branch: ${name,,}"
+# Check if file exists in all spots
+for c in "$ALPHA_C" "$BETA_C" "$GAMMA_C" "$MAIN_C"; do
+  if [ -z "$c" ]; then
+    echo "❌ Artifact trace lost. The file must exist in alpha, beta, gamma, and main."
     exit 1
   fi
 done
 
-echo "🧪 Comparing patch identities (Cherry-pick verification)..."
+echo "🧪 Verifying cherry-pick integrity (Patch Identity)..."
 
-# Patch identity check (must reference origin/)
-PATCH_ALPHA=$(git show "$ALPHA_COMMIT" --pretty=format: -- "$ARTIFACT")
-PATCH_BETA=$(git show "$BETA_COMMIT" --pretty=format: -- "$ARTIFACT")
-PATCH_GAMMA=$(git show "$GAMMA_COMMIT" --pretty=format: -- "$ARTIFACT")
-PATCH_MAIN=$(git show "$MAIN_COMMIT" --pretty=format: -- "$ARTIFACT")
+# Extract patches directly from the git database
+P_ALPHA=$(git show "$ALPHA_C" --pretty=format: -- "$ARTIFACT")
+P_BETA=$(git show "$BETA_C" --pretty=format: -- "$ARTIFACT")
+P_GAMMA=$(git show "$GAMMA_C" --pretty=format: -- "$ARTIFACT")
+P_MAIN=$(git show "$MAIN_C" --pretty=format: -- "$ARTIFACT")
 
-[ "$PATCH_ALPHA" = "$PATCH_BETA" ] || { echo "❌ alpha → beta not cherry-picked"; exit 1; }
-[ "$PATCH_BETA" = "$PATCH_GAMMA" ] || { echo "❌ beta → gamma not cherry-picked"; exit 1; }
-[ "$PATCH_GAMMA" = "$PATCH_MAIN" ] || { echo "❌ gamma → main not cherry-picked"; exit 1; }
+if [ "$P_ALPHA" != "$P_BETA" ]; then echo "❌ alpha -> beta: Not a cherry-pick."; exit 1; fi
+if [ "$P_BETA" != "$P_GAMMA" ]; then echo "❌ beta -> gamma: Not a cherry-pick."; exit 1; fi
+if [ "$P_GAMMA" != "$P_MAIN" ]; then echo "❌ gamma -> main: Not a cherry-pick."; exit 1; fi
 
-# No merges allowed on the artifact path
-# We check the log of origin/main to see if any merges affected the artifact
-if git log "origin/main" --merges --format=%H -- "$ARTIFACT" | grep -q .; then
-  echo "❌ merge used (not allowed)"
+echo "🛡️ Checking for illegal merges..."
+
+# Check if the artifact reached main via a merge commit
+if git log origin/main --merges --format=%H -- "$ARTIFACT" | grep -q .; then
+  echo "❌ Violation: Merge commit detected in the artifact's history."
   exit 1
 fi
 
-echo "✅LEVEL 5 PASSED"
+echo "✅ HARD LEVEL Ω PASSED — Branch Labyrinth Conquered"
