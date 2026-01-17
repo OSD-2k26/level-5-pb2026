@@ -1,4 +1,4 @@
-name: Git CTF Level 5 Validator
+name: Git CTF Level Ω Validator
 
 on:
   push:
@@ -6,25 +6,12 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
 
     steps:
-      - name: Checkout repository (full history)
+      - name: Checkout full history
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: Fetch all remote branches
-        run: git fetch --all --prune
-
-      - name: Create local branches from origin/*
-        run: |
-          for b in alpha beta gamma; do
-            if git show-ref --verify --quiet refs/remotes/origin/$b; then
-              git branch $b origin/$b || true
-            fi
-          done
-          git branch -a
 
       - name: Make validator executable
         run: chmod +x validate.sh
